@@ -16,6 +16,21 @@ class ModelManager:
     def __init__(self, models_dir: str = "/lib/security/howdy/models"):
         self.models_dir = models_dir
     
+    def is_root(self) -> bool:
+        """Check if the process is running as root"""
+        return os.getuid() == 0
+    
+    def get_base_cmd(self, use_sudo: bool = False) -> List[str]:
+        """Get the base howdy command with optional elevation"""
+        if self.is_root():
+            return ['howdy']
+        
+        # Check for pkexec as it's better for GUI apps
+        if os.path.exists('/usr/bin/pkexec'):
+            return ['pkexec', 'howdy']
+        
+        return ['sudo', 'howdy']
+    
     def get_user_models(self, username: str) -> List[Dict]:
         """Get all face models for a user"""
         model_file = os.path.join(self.models_dir, f"{username}.dat")
@@ -37,24 +52,30 @@ class ModelManager:
         Returns: (success, message)
         """
         try:
-            cmd = ['sudo', 'howdy', '-U', username, 'add']
+            base_cmd = self.get_base_cmd()
+            cmd = base_cmd + ['-U', username, 'add']
             if label:
                 cmd.append(label)
             
-            # Run the howdy add command
+            # For 'add', we might want to run it in a way that respects the terminal
+            # or captures output more gracefully if it's slow.
+            # We use a longer timeout because face enrollment takes time.
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=60
             )
             
             if result.returncode == 0:
                 return True, "Face model added successfully"
             else:
-                return False, f"Error: {result.stderr}"
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                if "run this command as root" in error_msg:
+                    return False, "Permission denied: Howdy must be run as root. Please start the app with sudo or ensure pkexec is working."
+                return False, f"Error: {error_msg}"
         except subprocess.TimeoutExpired:
-            return False, "Timeout: Face detection took too long"
+            return False, "Timeout: Face detection took too long. Make sure your camera is working and you are in a well-lit area."
         except Exception as e:
             return False, f"Error adding model: {str(e)}"
     
@@ -64,7 +85,8 @@ class ModelManager:
         Returns: (success, message)
         """
         try:
-            cmd = ['sudo', 'howdy', '-U', username, '-y', 'remove', str(model_id)]
+            base_cmd = self.get_base_cmd()
+            cmd = base_cmd + ['-U', username, '-y', 'remove', str(model_id)]
             
             result = subprocess.run(
                 cmd,
@@ -76,7 +98,7 @@ class ModelManager:
             if result.returncode == 0:
                 return True, "Face model removed successfully"
             else:
-                return False, f"Error: {result.stderr}"
+                return False, f"Error: {result.stderr or result.stdout}"
         except Exception as e:
             return False, f"Error removing model: {str(e)}"
     
@@ -86,7 +108,8 @@ class ModelManager:
         Returns: (success, message)
         """
         try:
-            cmd = ['sudo', 'howdy', '-U', username, '-y', 'clear']
+            base_cmd = self.get_base_cmd()
+            cmd = base_cmd + ['-U', username, '-y', 'clear']
             
             result = subprocess.run(
                 cmd,
@@ -98,7 +121,7 @@ class ModelManager:
             if result.returncode == 0:
                 return True, "All face models cleared"
             else:
-                return False, f"Error: {result.stderr}"
+                return False, f"Error: {result.stderr or result.stdout}"
         except Exception as e:
             return False, f"Error clearing models: {str(e)}"
     
@@ -108,7 +131,8 @@ class ModelManager:
         Returns: (success, message, details)
         """
         try:
-            cmd = ['sudo', 'howdy', '-U', username, 'test']
+            base_cmd = self.get_base_cmd()
+            cmd = base_cmd + ['-U', username, 'test']
             
             result = subprocess.run(
                 cmd,
@@ -126,7 +150,8 @@ class ModelManager:
             if result.returncode == 0:
                 return True, "Face recognized successfully", details
             else:
-                return False, "Face not recognized", details
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                return False, f"Face not recognized: {error_msg}", details
         except subprocess.TimeoutExpired:
             return False, "Timeout: Recognition test took too long", {}
         except Exception as e:
