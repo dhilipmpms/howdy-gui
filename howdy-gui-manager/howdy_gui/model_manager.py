@@ -125,9 +125,36 @@ class ModelManager:
         except Exception as e:
             return False, f"Error clearing models: {str(e)}"
     
-    def test_recognition(self, username: str) -> Tuple[bool, str, Dict]:
+    def test_recognition(self, username: str) -> Tuple[bool, str]:
         """
         Test face recognition
+        Returns: (success, message)
+        """
+        try:
+            base_cmd = self.get_base_cmd()
+            cmd = base_cmd + ['-U', username, 'test']
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                stdout_msg = result.stdout.strip() if result.stdout else ""
+                return True, f"✓ Face recognized successfully!\n{stdout_msg}"
+            else:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                return False, f"✗ Face not recognized.\nDetails: {error_msg}"
+        except subprocess.TimeoutExpired:
+            return False, "⏱ Timeout: Recognition test took too long. Make sure your camera is working."
+        except Exception as e:
+            return False, f"❌ Error testing recognition: {str(e)}"
+    
+    def test_recognition_detailed(self, username: str) -> Tuple[bool, str, Dict]:
+        """
+        Test face recognition with detailed output
         Returns: (success, message, details)
         """
         try:

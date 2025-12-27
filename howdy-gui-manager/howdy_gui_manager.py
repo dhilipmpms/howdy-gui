@@ -7,15 +7,16 @@ A graphical interface for managing Howdy facial authentication
 import sys
 import os
 import getpass
+from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QPushButton, QComboBox, QSlider, QSpinBox,
     QDoubleSpinBox, QCheckBox, QLineEdit, QTextEdit, QListWidget,
     QGroupBox, QFormLayout, QMessageBox, QDialog, QDialogButtonBox,
-    QListWidgetItem, QProgressDialog
+    QListWidgetItem, QProgressDialog, QInputDialog
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap, QFont
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread
+from PyQt5.QtGui import QImage, QPixmap, QFont, QIcon
 import cv2
 import numpy as np
 
@@ -32,14 +33,15 @@ class CameraPreviewWidget(QLabel):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
         self.setStyleSheet("""
-            border: 2px solid #E0E0E0;
+            border: 3px solid #2196F3;
             background-color: #000;
-            border-radius: 8px;
-            color: #BDBDBD;
-            font-size: 14px;
+            border-radius: 10px;
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: bold;
         """)
         self.setAlignment(Qt.AlignCenter)
-        self.setText("📷 No camera feed")
+        self.setText("📷 Camera Preview\n\nNo active feed")
         
         self.camera = None
         self.timer = QTimer()
@@ -65,7 +67,16 @@ class CameraPreviewWidget(QLabel):
         if self.camera:
             self.camera.release()
             self.camera = None
-        self.setText("📷 No camera feed")
+        self.clear()
+        self.setText("📷 Camera Preview\n\nStopped")
+        self.setStyleSheet("""
+            border: 3px solid #757575;
+            background-color: #000;
+            border-radius: 10px;
+            color: #BDBDBD;
+            font-size: 16px;
+            font-weight: bold;
+        """)
     
     def update_frame(self):
         """Update the displayed frame"""
@@ -266,7 +277,7 @@ class CameraSettingsTab(QWidget):
             QMessageBox.critical(self, "Error", f"Error saving settings: {str(e)}")
 
 
-class ModelWorker(Qt.QThread):
+class ModelWorker(QThread):
     """Worker thread for running model operations without blocking UI"""
     finished = pyqtSignal(bool, str)
     
@@ -277,8 +288,13 @@ class ModelWorker(Qt.QThread):
         
     def run(self):
         try:
-            success, message = self.operation_func(*self.args)
-            self.finished.emit(success, message)
+            result = self.operation_func(*self.args)
+            # Handle both 2 and 3 return values
+            if isinstance(result, tuple) and len(result) >= 2:
+                success, message = result[0], result[1]
+                self.finished.emit(success, message)
+            else:
+                self.finished.emit(False, "Invalid operation result")
         except Exception as e:
             self.finished.emit(False, str(e))
 
@@ -297,15 +313,20 @@ class FaceModelsTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
         
-        # User info
-        user_label = QLabel(f"<b>👤 Managing face models for user:</b> {self.username}")
+        # User info with better styling
+        user_label = QLabel(f"<div style='text-align: center;'>"
+                          f"<span style='font-size: 32px;'>👤</span><br>"
+                          f"<b style='font-size: 16px;'>Managing face models for:</b><br>"
+                          f"<span style='font-size: 18px; color: #1976D2;'>{self.username}</span>"
+                          f"</div>")
         user_label.setStyleSheet("""
-            font-size: 14px;
-            padding: 16px;
-            background-color: #E3F2FD;
-            border-radius: 6px;
-            color: #0D47A1;
+            padding: 20px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #E3F2FD, stop:1 #BBDEFB);
+            border-radius: 8px;
+            border-left: 5px solid #1976D2;
         """)
+        user_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(user_label)
         
         # Models list
@@ -351,7 +372,11 @@ class FaceModelsTab(QWidget):
         test_group = QGroupBox("Test Face Recognition")
         test_layout = QVBoxLayout()
         
-        test_info = QLabel("Click the button below to test if your face is recognized correctly.")
+        test_info = QLabel("<div style='padding: 12px; background-color: #FFF3E0; border-radius: 6px; border-left: 4px solid #FF9800;'>"
+                         "<b>💡 Tip:</b> Click the button below to test if your face is recognized correctly. "
+                         "Make sure you're in a well-lit area and looking at the camera."
+                         "</div>")
+        test_info.setWordWrap(True)
         test_layout.addWidget(test_info)
         
         test_btn = QPushButton("🔍 Test Recognition")
@@ -362,7 +387,20 @@ class FaceModelsTab(QWidget):
         
         self.test_output = QTextEdit()
         self.test_output.setReadOnly(True)
-        self.test_output.setMaximumHeight(150)
+        self.test_output.setMinimumHeight(120)
+        self.test_output.setMaximumHeight(180)
+        self.test_output.setStyleSheet("""
+            QTextEdit {
+                background-color: #263238;
+                color: #00E676;
+                border: 2px solid #37474F;
+                border-radius: 6px;
+                padding: 12px;
+                font-size: 14px;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            }
+        """)
+        self.test_output.setPlaceholderText("Test results will appear here...")
         test_layout.addWidget(self.test_output)
         
         test_group.setLayout(test_layout)
@@ -377,20 +415,24 @@ class FaceModelsTab(QWidget):
         models = self.model_manager.get_user_models(self.username)
         
         if not models:
-            item = QListWidgetItem("No face models found. Click 'Add New Model' to create one.")
+            item = QListWidgetItem("ℹ️ No face models found. Click 'Add New Model' to create one.")
             item.setFlags(Qt.NoItemFlags)
+            from PyQt5.QtGui import QColor
+            item.setForeground(QColor(117, 117, 117))
             self.models_list.addItem(item)
         else:
             for model in models:
                 info = self.model_manager.format_model_info(model)
-                item = QListWidgetItem(info)
+                item = QListWidgetItem(f"✓ {info}")
                 item.setData(Qt.UserRole, model['id'])
+                from PyQt5.QtGui import QColor
+                item.setForeground(QColor(67, 160, 71))  # Green for active models
                 self.models_list.addItem(item)
     
     def add_model(self):
         """Add a new face model"""
         # Ask for label
-        label, ok = QLineEdit.getText(self, "Add Face Model", "Enter a label for this model (optional):")
+        label, ok = QInputDialog.getText(self, "Add Face Model", "Enter a label for this model (optional):")
         
         if not ok:
             return
@@ -504,16 +546,153 @@ class FaceModelsTab(QWidget):
         # Actually, ModelWorker can be made more flexible.
         
         if success:
-            self.test_output.setStyleSheet("color: darkgreen;")
+            self.test_output.setStyleSheet("""
+                QTextEdit {
+                    background-color: #1B5E20;
+                    color: #76FF03;
+                    border: 3px solid #4CAF50;
+                    border-radius: 6px;
+                    padding: 12px;
+                    font-size: 14px;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-weight: bold;
+                }
+            """)
         else:
-            self.test_output.setStyleSheet("color: red;")
+            self.test_output.setStyleSheet("""
+                QTextEdit {
+                    background-color: #B71C1C;
+                    color: #FFCDD2;
+                    border: 3px solid #F44336;
+                    border-radius: 6px;
+                    padding: 12px;
+                    font-size: 14px;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-weight: bold;
+                }
+            """)
 
 
 class AdvancedSettingsTab(QWidget):
-    # ... (existing code)
-    # I'll just keep it as is for now, but I need to make sure I don't break anything.
-    # Actually, I'll just add the new Tab class before HowdyGUIManager.
-    pass
+    """Tab for advanced Howdy settings"""
+    
+    def __init__(self, config_manager, parent=None):
+        super().__init__(parent)
+        self.config = config_manager
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Core settings group
+        core_group = QGroupBox("Core Settings")
+        core_layout = QFormLayout()
+        
+        # Detection notice
+        self.detection_notice_check = QCheckBox()
+        self.detection_notice_check.setChecked(self.config.get_boolean('core', 'detection_notice', True))
+        self.detection_notice_check.setToolTip("Show a notice when face detection is attempted")
+        core_layout.addRow("Show Detection Notice:", self.detection_notice_check)
+        
+        # Suppress unknown
+        self.suppress_unknown_check = QCheckBox()
+        self.suppress_unknown_check.setChecked(self.config.get_boolean('core', 'suppress_unknown', False))
+        self.suppress_unknown_check.setToolTip("Don't show a warning when no face is detected")
+        core_layout.addRow("Suppress Unknown Warnings:", self.suppress_unknown_check)
+        
+        core_group.setLayout(core_layout)
+        layout.addWidget(core_group)
+        
+        # Video settings group
+        video_group = QGroupBox("Video Processing")
+        video_layout = QFormLayout()
+        
+        # Frame width
+        self.frame_width_spin = QSpinBox()
+        self.frame_width_spin.setRange(100, 1920)
+        self.frame_width_spin.setValue(self.config.get_int('video', 'frame_width', 640))
+        self.frame_width_spin.setSuffix(" px")
+        self.frame_width_spin.setToolTip("Width for frame capture")
+        video_layout.addRow("Frame Width:", self.frame_width_spin)
+        
+        # Frame height
+        self.frame_height_spin = QSpinBox()
+        self.frame_height_spin.setRange(100, 1080)
+        self.frame_height_spin.setValue(self.config.get_int('video', 'frame_height', 480))
+        self.frame_height_spin.setSuffix(" px")
+        self.frame_height_spin.setToolTip("Height for frame capture")
+        video_layout.addRow("Frame Height:", self.frame_height_spin)
+        
+        # Recording timeout
+        self.recording_timeout_spin = QSpinBox()
+        self.recording_timeout_spin.setRange(1, 60)
+        self.recording_timeout_spin.setValue(self.config.get_int('video', 'recording_timeout', 5))
+        self.recording_timeout_spin.setSuffix(" seconds")
+        self.recording_timeout_spin.setToolTip("Maximum time for recording during enrollment")
+        video_layout.addRow("Recording Timeout:", self.recording_timeout_spin)
+        
+        video_group.setLayout(video_layout)
+        layout.addWidget(video_group)
+        
+        # Snapshots group
+        snapshot_group = QGroupBox("Snapshots")
+        snapshot_layout = QFormLayout()
+        
+        self.snapshots_check = QCheckBox()
+        self.snapshots_check.setChecked(self.config.get_boolean('snapshots', 'save_failed', False))
+        self.snapshots_check.setToolTip("Save snapshots of failed authentication attempts")
+        snapshot_layout.addRow("Save Failed Attempts:", self.snapshots_check)
+        
+        snapshot_group.setLayout(snapshot_layout)
+        layout.addWidget(snapshot_group)
+        
+        # Debug group
+        debug_group = QGroupBox("Debug Options")
+        debug_layout = QFormLayout()
+        
+        self.debug_check = QCheckBox()
+        self.debug_check.setChecked(self.config.get_boolean('debug', 'enable', False))
+        self.debug_check.setToolTip("Enable verbose debug logging")
+        debug_layout.addRow("Enable Debug Mode:", self.debug_check)
+        
+        debug_group.setLayout(debug_layout)
+        layout.addWidget(debug_group)
+        
+        # Save button
+        save_btn = QPushButton("💾 Save Advanced Settings")
+        save_btn.setProperty("styleClass", "success")
+        save_btn.setToolTip("Save all advanced settings")
+        save_btn.clicked.connect(self.save_settings)
+        layout.addWidget(save_btn)
+        
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def save_settings(self):
+        """Save all advanced settings to config file"""
+        try:
+            # Core settings
+            self.config.set('core', 'detection_notice', str(self.detection_notice_check.isChecked()).lower())
+            self.config.set('core', 'suppress_unknown', str(self.suppress_unknown_check.isChecked()).lower())
+            
+            # Video settings
+            self.config.set('video', 'frame_width', str(self.frame_width_spin.value()))
+            self.config.set('video', 'frame_height', str(self.frame_height_spin.value()))
+            self.config.set('video', 'recording_timeout', str(self.recording_timeout_spin.value()))
+            
+            # Snapshots
+            self.config.set('snapshots', 'save_failed', str(self.snapshots_check.isChecked()).lower())
+            
+            # Debug
+            self.config.set('debug', 'enable', str(self.debug_check.isChecked()).lower())
+            
+            # Save to file
+            if self.config.save():
+                QMessageBox.information(self, "Success", "Advanced settings saved successfully!")
+            else:
+                QMessageBox.warning(self, "Error", "Failed to save settings. Check permissions.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error saving settings: {str(e)}")
 
 class SystemDiagnosticTab(QWidget):
     """Tab for checking system health and Howdy status"""
@@ -562,11 +741,13 @@ class SystemDiagnosticTab(QWidget):
     def add_status_item(self, text, success=True):
         item = QListWidgetItem(text)
         if success:
-            item.setIcon(self.style().standardIcon(Qt.QStyle.SP_DialogApplyButton))
-            item.setForeground(Qt.darkGreen)
+            item.setText("✓ " + text)
+            from PyQt5.QtGui import QColor
+            item.setForeground(QColor(67, 160, 71))  # Green
         else:
-            item.setIcon(self.style().standardIcon(Qt.QStyle.SP_DialogCancelButton))
-            item.setForeground(Qt.red)
+            item.setText("✗ " + text)
+            from PyQt5.QtGui import QColor
+            item.setForeground(QColor(244, 67, 54))  # Red
         self.status_list.addItem(item)
     
     def run_diagnostic(self):
@@ -611,7 +792,8 @@ class SystemDiagnosticTab(QWidget):
             
         # 5. Check Video Devices
         from howdy_gui.camera_utils import CameraUtils
-        devices = CameraUtils.detect_video_devices()
+        cam_utils = CameraUtils()
+        devices = cam_utils.detect_video_devices()
         self.add_status_item(f"Cameras detected: {len(devices)}", len(devices) > 0)
         for path, name in devices:
             self.details_output.append(f"Detected camera: {name} ({path})\n")
@@ -973,13 +1155,20 @@ class HowdyGUIManager(QMainWindow):
         layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Header with gradient
-        header = QLabel("<h1 style='margin: 0; font-size: 28px; font-weight: 600;'>🔐 Howdy GUI Manager</h1>")
+        # Header with gradient and shadow effect
+        header = QLabel("<div style='text-align: center;'>"
+                      "<h1 style='margin: 0; font-size: 32px; font-weight: 700; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>"
+                      "🔐 Howdy GUI Manager"
+                      "</h1>"
+                      "<p style='margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;'>"
+                      "Facial Authentication Management for Linux"
+                      "</p>"
+                      "</div>")
         header.setStyleSheet("""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #1976D2, stop:1 #00BCD4);
+                stop:0 #1976D2, stop:0.5 #1E88E5, stop:1 #00BCD4);
             color: white;
-            padding: 24px;
+            padding: 28px;
             border: none;
         """)
         header.setAlignment(Qt.AlignCenter)
@@ -1005,14 +1194,17 @@ class HowdyGUIManager(QMainWindow):
         content_layout.addWidget(tabs)
         layout.addWidget(content_widget)
         
-        # Footer
-        footer = QLabel("Howdy GUI Manager v1.0.0 | Manage your facial authentication settings")
+        # Footer with icons
+        footer = QLabel("<div style='text-align: center;'>"
+                      "<span style='font-size: 11px; color: #9E9E9E;'>Howdy GUI Manager</span> "
+                      "<span style='font-size: 11px; color: #1976D2; font-weight: bold;'>v1.0.0</span><br>"
+                      "<span style='font-size: 10px; color: #BDBDBD;'>✨ Making facial authentication easy and secure</span>"
+                      "</div>")
         footer.setStyleSheet("""
-            padding: 12px;
-            color: #757575;
-            background-color: #FAFAFA;
-            border-top: 1px solid #E0E0E0;
-            font-size: 12px;
+            padding: 16px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #FAFAFA, stop:1 #F0F0F0);
+            border-top: 2px solid #E0E0E0;
         """)
         footer.setAlignment(Qt.AlignCenter)
         layout.addWidget(footer)
@@ -1029,11 +1221,11 @@ class HowdyGUIManager(QMainWindow):
 
 def main():
     """Main entry point"""
-    # Root check with GUI warning
-    is_root = os.geteuid() == 0
-    
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Modern look
+    
+    # Root check with GUI warning
+    is_root = os.geteuid() == 0
     
     if not is_root:
         reply = QMessageBox.warning(
@@ -1044,9 +1236,6 @@ def main():
         )
         if reply == QMessageBox.No:
             sys.exit(0)
-    
-    app = QApplication(sys.argv)
-    app.setStyle('Fusion')  # Modern look
     
     window = HowdyGUIManager()
     window.show()
