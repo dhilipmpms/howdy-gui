@@ -1,48 +1,77 @@
 from PyQt6.QtWidgets import (
-    QWidget, QPushButton, QLabel,
-    QVBoxLayout, QMessageBox
+    QWidget, QVBoxLayout, QTabWidget, QLabel
 )
-from core.howdy import howdy_test, howdy_add
+from PyQt6.QtCore import Qt
+from ui.models_tab import ModelsTab
+from ui.config_tab import ConfigTab
+from ui.test_tab import TestTab
+
 
 class MainWindow(QWidget):
+    """Main window with tabbed interface for Howdy management."""
+    
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Howdy Face Authentication")
-
-        self.status = QLabel("Status: Ready")
-
-        self.btn_test = QPushButton("Test Face")
-        self.btn_add = QPushButton("Add Face")
-
+        self.setWindowTitle("Howdy Face Authentication Manager")
+        self.setMinimumSize(600, 500)
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the UI components."""
         layout = QVBoxLayout()
-        layout.addWidget(self.status)
-        layout.addWidget(self.btn_test)
-        layout.addWidget(self.btn_add)
+        
+        # Header
+        header = QLabel("Howdy Face Authentication Manager")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setStyleSheet("""
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #2196F3;
+            color: white;
+            border-radius: 5px;
+        """)
+        layout.addWidget(header)
+        
+        # Tab widget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #cccccc;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QTabBar::tab {
+                background-color: #f0f0f0;
+                padding: 10px 20px;
+                margin: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTabBar::tab:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+        
+        # Add tabs
+        self.models_tab = ModelsTab()
+        self.config_tab = ConfigTab()
+        self.test_tab = TestTab()
+        
+        self.tabs.addTab(self.models_tab, "📸 Face Models")
+        self.tabs.addTab(self.config_tab, "⚙️ Configuration")
+        self.tabs.addTab(self.test_tab, "🧪 Test")
+        
+        layout.addWidget(self.tabs)
+        
+        # Footer
+        footer = QLabel("Manage face authentication for your system")
+        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
+        layout.addWidget(footer)
+        
         self.setLayout(layout)
-
-        self.btn_test.clicked.connect(self.run_test)
-        self.btn_add.clicked.connect(self.run_add)
-
-    def run_test(self):
-        self.status.setText("Testing face...")
-        result = howdy_test()
-
-        if result.returncode == 0:
-            QMessageBox.information(self, "Success", "Face recognized")
-            self.status.setText("Status: Success")
-        else:
-            QMessageBox.warning(self, "Failed", "Face not recognized")
-            self.status.setText("Status: Failed")
-
-    def run_add(self):
-        QMessageBox.information(
-            self,
-            "Instructions",
-            "Look at the camera.\nFollow terminal instructions."
-        )
-
-        result = howdy_add()
-        if result.returncode == 0:
-            QMessageBox.information(self, "Done", "Face added successfully")
-        else:
-            QMessageBox.warning(self, "Failed", "Could not add face")
