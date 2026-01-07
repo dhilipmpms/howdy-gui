@@ -3,6 +3,30 @@ import shutil
 import re
 import os
 
+def get_actual_user():
+    """
+    Get the actual user, even when running with sudo/pkexec.
+    
+    Returns:
+        str: The username of the actual user
+    """
+    # Try SUDO_USER first (set when using sudo)
+    user = os.environ.get('SUDO_USER')
+    if user:
+        return user
+    
+    # Try PKEXEC_UID (set when using pkexec)
+    pkexec_uid = os.environ.get('PKEXEC_UID')
+    if pkexec_uid:
+        try:
+            import pwd
+            return pwd.getpwuid(int(pkexec_uid)).pw_name
+        except:
+            pass
+    
+    # Fall back to current user
+    return os.environ.get('USER', 'root')
+
 def is_howdy_installed():
     """Check if Howdy is installed on the system."""
     return shutil.which("howdy") is not None
@@ -76,18 +100,24 @@ def howdy_test():
         return False, f"Error: {str(e)}"
 
 
-def howdy_add(label=None):
+def howdy_add(label=None, username=None):
     """
     Add a new face model.
     
     Args:
         label: Optional label for the model
+        username: Optional username to add the model for (defaults to actual user)
         
     Returns:
         tuple: (success: bool, message: str)
     """
     try:
-        cmd = ["howdy", "add"]
+        # Get the actual user if not specified
+        if username is None:
+            username = get_actual_user()
+        
+        # Build command: howdy add <username> [label]
+        cmd = ["howdy", "add", username]
         if label:
             cmd.append(label)
         
@@ -98,7 +128,7 @@ def howdy_add(label=None):
         )
         
         if result.returncode == 0:
-            return True, f"Face model '{label or 'default'}' added successfully!"
+            return True, f"Face model '{label or 'default'}' added successfully for user {username}!"
         else:
             return False, "Failed to add face model"
             

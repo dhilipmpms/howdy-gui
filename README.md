@@ -6,10 +6,12 @@ A comprehensive GUI application for managing Howdy face authentication on Linux 
 
 ### 🎯 Multi-Distribution Support
 - **Debian/Ubuntu** family (Ubuntu, Pop!_OS, Linux Mint, Elementary, Zorin)
+  - Ubuntu 22.04 and earlier: Official PPA (ppa:boltgolt/howdy)
+  - **Ubuntu 24.04, 24.10, 25.04**: Unofficial PPA (ppa:ubuntuhandbook1/howdy) with automatic dependency installation
 - **Fedora/RHEL** family (Fedora, RHEL, CentOS, Rocky, AlmaLinux)
 - **Arch** family (Arch, Manjaro, EndeavourOS, Garuda)
 - Automatic version detection and compatibility checking
-- Ubuntu 24.04+ restriction enforcement
+- Smart PPA selection based on Ubuntu version
 
 ### 📸 Face Model Management
 - **List** all registered face models
@@ -113,7 +115,8 @@ howdy-gui/
 ## Supported Distributions
 
 ### Debian Family
-- Ubuntu (up to 22.04)
+- Ubuntu 22.04 and earlier (Official PPA)
+- **Ubuntu 24.04, 24.10, 25.04** (Unofficial PPA with additional dependencies)
 - Debian
 - Pop!_OS
 - Linux Mint
@@ -135,10 +138,10 @@ howdy-gui/
 
 ## Known Limitations
 
-- Ubuntu 24.04 and later are not supported due to PAM changes
 - Configuration changes require sudo privileges
 - IR camera required for face authentication
 - Some distributions may require manual Howdy installation
+- Ubuntu 24.04+ uses unofficial PPA (ppa:ubuntuhandbook1/howdy)
 
 ## Troubleshooting
 

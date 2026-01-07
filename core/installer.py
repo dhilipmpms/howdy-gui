@@ -16,14 +16,10 @@ def install_howdy():
     version = distro_info["version"]
     family = distro_info["family"]
     
-    # Check for Ubuntu 24.04 restriction
-    if distro_id == "ubuntu" and version.startswith("24"):
-        return False, (
-            f"Ubuntu {version} is not supported.\\n\\n"
-            "Howdy is not compatible with Ubuntu 24.04 and later due to "
-            "changes in PAM and IR camera support.\\n\\n"
-            "Please use Ubuntu 22.04 or earlier."
-        )
+    # Ubuntu 24.04+ uses a different PPA and requires additional setup
+    ubuntu_24_plus = distro_id == "ubuntu" and version and (
+        version.startswith("24") or version.startswith("25")
+    )
     
     # Handle Arch-based distributions
     if family == "arch":
@@ -48,7 +44,7 @@ def install_howdy():
         )
     
     # Run installation script
-    cmd = ["bash", SCRIPT_PATH, distro_id, version, family]
+    cmd = ["bash", SCRIPT_PATH, distro_id, version, family, str(ubuntu_24_plus).lower()]
     
     try:
         result = subprocess.run(
@@ -67,10 +63,18 @@ def install_howdy():
     
     # Verify installation
     if is_howdy_installed():
-        return True, (
-            f"Howdy installed successfully on {distro_info['name']} {version}!\\n\\n"
-            "You can now configure and use face authentication."
-        )
+        success_msg = f"Howdy installed successfully on {distro_info['name']} {version}!\\n\\n"
+        
+        if ubuntu_24_plus:
+            success_msg += (
+                "✅ Ubuntu 24.04+ installation complete!\\n\\n"
+                "Note: This version uses the unofficial PPA (ppa:ubuntuhandbook1/howdy) "
+                "with additional Python dependencies.\\n\\n"
+            )
+        
+        success_msg += "You can now configure and use face authentication."
+        
+        return True, success_msg
     else:
         return False, (
             "Installation script completed but Howdy command not found.\\n\\n"
